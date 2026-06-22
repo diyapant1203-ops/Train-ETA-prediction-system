@@ -109,6 +109,7 @@ if predict:
 
     total_distance = schedule["cum_dist"].max()
 
+    input_delay = current_delay   # Store the user's input once
     prev_delay = current_delay
     results = []
 
@@ -121,7 +122,7 @@ if predict:
             "intr_dist": row["intr_dist"],
             "run_time": row["run_time"],
             "block_section_speed": row["block_section_speed"],
-            "delay_min_fixed": current_delay,
+            "delay_min_fixed": input_delay,
             "prev_delay": prev_delay,
             "distance_remaining": total_distance - row["cum_dist"]
         }])
@@ -139,8 +140,7 @@ if predict:
             f"{hours:02d}:{minutes:02d}"
         ])
 
-        prev_delay = current_delay
-        current_delay = predicted_delay
+        prev_delay = predicted_delay
 
     eta_df = pd.DataFrame(
         results,
@@ -158,6 +158,35 @@ if predict:
 
     st.subheader("🚉 Upcoming Station Predictions")
     st.dataframe(eta_df, use_container_width=True)
+    with st.expander("🔍 Debug: Raw Prediction Details"):
+        debug_rows = []
+        prev_d = current_delay
+        inp_d = current_delay
+        for _, row in future_stations.iterrows():
+            sample = pd.DataFrame([{
+                "seq_number": row["seq_number"],
+                "cum_dist": row["cum_dist"],
+                "intr_dist": row["intr_dist"],
+                "run_time": row["run_time"],
+                "block_section_speed": row["block_section_speed"],
+                "delay_min_fixed": inp_d,
+                "prev_delay": prev_d,
+                "distance_remaining": total_distance - row["cum_dist"]
+            }])
+            pred = model.predict(sample)[0]
+            eta_s = row["wtt_arvl_time_sec"] + pred * 60
+            h = int((eta_s % 86400) // 3600)
+            m = int((eta_s % 3600) // 60)
+            debug_rows.append({
+                "Station": row["sttn_code"],
+                "delay_min_fixed (input)": round(inp_d, 2),
+                "prev_delay (input)": round(prev_d, 2),
+                "Predicted Delay": round(pred, 2),
+                "wtt_arvl_time_sec": row["wtt_arvl_time_sec"],
+                "ETA": f"{h:02d}:{m:02d}"
+            })
+            prev_d = pred
+        st.dataframe(pd.DataFrame(debug_rows))
     st.subheader("🚆 Railway Route Delay Map")
 
     # Complete route from current station onwards (commercial stops only)
